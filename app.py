@@ -2,8 +2,14 @@ import os
 import sys
 import requests
 from decouple import config
+from pathlib import Path
 
 from langgraph.graph import StateGraph, END
+from langchain_core.messages import AIMessage
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+
 
 from typing_extensions import TypedDict
 from typing import Annotated
@@ -16,18 +22,31 @@ import re
 try:
     OMP_API_URL = config("OMP_API_URL")
     OMP_API_TOKEN = config("OMP_API_TOKEN")
+    os.environ["GOOGLE_API_KEY"] = config("GOOGLE_API_KEY")
 except Exception as e:
     print(f"Erro ao carregar as variáveis do .env: {e}")
     sys.exit(1)
 
+PROMPT_PATH = Path("prompt.md")  # chama o prompt
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
+
+
+def get_model():
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.2,
+        top_p=0.95,
+        top_k=40,
+    )
 
 
 class AgentState(TypedDict):
     path: Annotated[str, Field(description="Caminho dos arquivos")]
     archives: Annotated[list[str], Field(description="Lista de arquivos")]
     documents: Annotated[list[dict], Field(description="Documentos convertidos")]  # noqa
+    prompt: Annotated[list[dict], Field(description="Prompt")]
 
 
 class AgentExecutionException(Exception):
@@ -71,7 +90,7 @@ def convert_files(state: AgentState) -> dict:
     return {"documents": documents}
 
 
-def compare_contracts_diff(state: AgentState) -> dict:
+def compare_docs_diff(state: AgentState) -> dict:
     """Compara as diferenças entre dois contratos."""
     logger.debug("Comparing contract differences...")
 
@@ -98,12 +117,12 @@ def compare_contracts_diff(state: AgentState) -> dict:
             f"Erro ao comparar contratos: {response_dict.get('message', 'Erro desconhecido')}"  # noqa
         )
 
-    contract_diff = response_dict.get("differences", "")
+    docs_diff = response_dict.get("differences")
 
     results = []
 
     pattern_update = re.compile(r"<del>(.*?)</del>\s*<ins>(.*?)</ins>", re.DOTALL)  # noqa
-    for old, new in pattern_update.findall(contract_diff):
+    for old, new in pattern_update.findall(docs_diff):
         results.append(
             {
                 "status": "updated",
@@ -114,7 +133,7 @@ def compare_contracts_diff(state: AgentState) -> dict:
             }
         )
 
-    deletions = re.sub(pattern_update, "", contract_diff)
+    deletions = re.sub(pattern_update, "", docs_diff)
     for d in re.findall(r"<del>(.*?)</del>", deletions, re.DOTALL):
         results.append(
             {
@@ -123,7 +142,7 @@ def compare_contracts_diff(state: AgentState) -> dict:
             }
         )
 
-    insertions = re.sub(pattern_update, "", contract_diff)
+    insertions = re.sub(pattern_update, "", docs_diff)
     for i in re.findall(r"<ins>(.*?)</ins>", insertions, re.DOTALL):
         results.append(
             {
@@ -132,7 +151,40 @@ def compare_contracts_diff(state: AgentState) -> dict:
             }
         )
 
-    return {"contract_diff": results}
+    return {"docs_diff": results}
+
+
+def load_prompt_template() -> ChatPromptTemplate:
+    if not PROMPT_PATH.is_file():
+        raise FileNotFoundError("Arquivo de prompt não encontrado.")
+    content = PROMPT_PATH.read_text(encoding="utf-8")
+    return content
+
+
+def agent_node(state: AgentState, answer: AIMessage) -> dict:
+    model = get_model()
+    prompt_template = load_prompt_template()
+
+    # Pegando documentos e diffs do state
+    doc1 = state["documents"][0]["document"]
+    doc2 = state["documents"][1]["document"]
+    diffs = state.get("docs_diff", [])
+
+    analyses = []
+
+    for diff in diffs:
+        prompt = prompt_template.format(
+            doc_original=doc1,
+            doc_updated=doc2,
+            single_diff=diff,
+        )
+
+        response = model.invoke(prompt)
+
+        diff["analysis"] = response.content
+        analyses.append(diff)
+
+    return {"analyses": analyses}
 
 
 def create_graph():
@@ -140,27 +192,38 @@ def create_graph():
 
     graph.add_node("get_files", get_files_for_directory)
     graph.add_node("convert", convert_files)
-    graph.add_node("compare", compare_contracts_diff)
+    graph.add_node("compare", compare_docs_diff)
+    graph.add_node("agent", agent_node)
 
     graph.set_entry_point("get_files")
     graph.add_edge("get_files", "convert")
     graph.add_edge("convert", "compare")
-    graph.add_edge("compare", END)
+    graph.add_edge("compare", "agent")
+    graph.add_edge("agent", END)
 
     return graph.compile()
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Uso: python app.py data/documento1.pdf data/documento2.pdf")  # noqa
+        print("Uso: python app.py data/exemplo1.pdf data/exemplo2.pdf")
         sys.exit(1)
 
     file1, file2 = sys.argv[1], sys.argv[2]
 
     state: AgentState = {"path": "", "archives": [file1, file2], "documents": []}  # noqa
 
+    # Converte documentos
     state["documents"] = [get_file_content(file1), get_file_content(file2)]
 
-    diff_result = compare_contracts_diff(state)
+    # Compara documentos e adiciona as diferenças ao state
+    state["docs_diff"] = compare_docs_diff(state)["docs_diff"]
 
-    print(diff_result["contract_diff"])
+    # Chama o node do agente que monta o prompt e a LLM
+    result = agent_node(state, answer=None)  # retorna {"analyses": [...]}
+    analyses = result["analyses"]
+
+    # Imprime SOMENTE o texto humano da LLM, um por alteração
+    for idx, item in enumerate(analyses, start=1):
+        print(f"\n--- Alteração {idx} ---")
+        print(item["analysis"])
