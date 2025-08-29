@@ -3,6 +3,7 @@ import sys
 import requests
 from decouple import config
 from pathlib import Path
+import time
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage
@@ -172,7 +173,7 @@ def agent_node(state: AgentState, answer: AIMessage) -> dict:
 
     analyses = []
 
-    for diff in diffs:
+    for idx, diff in enumerate(diffs, start=1):
         prompt = prompt_template.format(
             doc_original=doc1,
             doc_updated=doc2,
@@ -180,6 +181,10 @@ def agent_node(state: AgentState, answer: AIMessage) -> dict:
         )
 
         response = model.invoke(prompt)
+
+        time.sleep(6.5)
+        print(f"\n--- Alteração {idx} ---")
+        print(response.content)
 
         diff["analysis"] = response.content
         analyses.append(diff)
@@ -220,10 +225,10 @@ if __name__ == "__main__":
     state["docs_diff"] = compare_docs_diff(state)["docs_diff"]
 
     # Chama o node do agente que monta o prompt e a LLM
-    result = agent_node(state, answer=None)  # retorna {"analyses": [...]}
+    result = agent_node(state, answer=None)
     analyses = result["analyses"]
 
-    # Imprime SOMENTE o texto humano da LLM, um por alteração
-    for idx, item in enumerate(analyses, start=1):
-        print(f"\n--- Alteração {idx} ---")
-        print(item["analysis"])
+    # Imprime o texto feito pela LLM
+    # for idx, item in enumerate(analyses, start=1):
+    #     print(f"\n--- Alteração {idx} ---")
+    #     print(item["analysis"])
