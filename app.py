@@ -13,8 +13,8 @@ from langchain_core.prompts import ChatPromptTemplate
 
 
 from typing_extensions import TypedDict
-from typing import Annotated
-from pydantic import Field
+from typing import Annotated, Union, List
+from pydantic import Field, BaseModel
 import logging
 import re
 
@@ -48,6 +48,31 @@ class AgentState(TypedDict):
     archives: Annotated[list[str], Field(description="Lista de arquivos")]
     documents: Annotated[list[dict], Field(description="Documentos convertidos")]  # noqa
     prompt: Annotated[list[dict], Field(description="Prompt")]
+
+
+class DiffAnalysis(BaseModel):
+    diff: str
+    explanation: str
+    impact: str
+
+
+class DiffContent(BaseModel):
+    from_: Union[str, None] = None  # "from" é reservado
+    to: Union[str, None] = None
+
+
+class DiffItem(BaseModel):
+    id: int
+    type_diff: str
+    content_diff: Union[str, DiffContent, None]
+    analysis: DiffAnalysis
+
+
+class AnalysisOutput(BaseModel):
+    doc_original: str
+    doc_updated: str
+    qtd_diff: int
+    diffs: List[DiffItem]
 
 
 class AgentExecutionException(Exception):
@@ -163,33 +188,45 @@ def load_prompt_template() -> ChatPromptTemplate:
 
 
 def agent_node(state: AgentState, answer: AIMessage) -> dict:
-    model = get_model()
+    model = get_model().with_structured_output(DiffAnalysis)
     prompt_template = load_prompt_template()
 
-    # Pegando documentos e diffs do state
     doc1 = state["documents"][0]["document"]
     doc2 = state["documents"][1]["document"]
     diffs = state.get("docs_diff", [])
 
-    analyses = []
+    analyses: List[DiffItem] = []
+    seen_diffs = set()
 
     for idx, diff in enumerate(diffs, start=1):
+        diff_text = str(diff)
+        if diff_text in seen_diffs:
+            continue
+        seen_diffs.add(diff_text)
+
         prompt = prompt_template.format(
             doc_original=doc1,
             doc_updated=doc2,
             single_diff=diff,
         )
 
-        response = model.invoke(prompt)
-
+        response: DiffAnalysis = model.invoke(prompt)
         time.sleep(6.5)
-        print(f"\n--- Alteração {idx} ---")
-        print(response.content)
 
-        diff["analysis"] = response.content
-        analyses.append(diff)
+        conteudo = diff["difference"]
+        if isinstance(conteudo, dict):
+            conteudo = DiffContent(from_=conteudo.get("from"), to=conteudo.get("to"))  # noqa
 
-    return {"analyses": analyses}
+        analyses.append(
+            DiffItem(
+                id=idx,
+                type_diff=diff["status"],
+                content_diff=conteudo,
+                analysis=response,
+            )
+        )
+
+    return {"analises": analyses}
 
 
 def create_graph():
@@ -217,18 +254,20 @@ if __name__ == "__main__":
     file1, file2 = sys.argv[1], sys.argv[2]
 
     state: AgentState = {"path": "", "archives": [file1, file2], "documents": []}  # noqa
-
-    # Converte documentos
     state["documents"] = [get_file_content(file1), get_file_content(file2)]
-
-    # Compara documentos e adiciona as diferenças ao state
     state["docs_diff"] = compare_docs_diff(state)["docs_diff"]
 
-    # Chama o node do agente que monta o prompt e a LLM
     result = agent_node(state, answer=None)
-    analyses = result["analyses"]
+    analyses = result["analises"]
 
-    # Imprime o texto feito pela LLM
-    # for idx, item in enumerate(analyses, start=1):
-    #     print(f"\n--- Alteração {idx} ---")
-    #     print(item["analysis"])
+    output = AnalysisOutput(
+        doc_original=file1,
+        doc_updated=file2,
+        qtd_diff=len(analyses),
+        diffs=analyses,
+    )
+
+    print(output.model_dump_json(indent=2))
+
+    with open("compare.json", "w", encoding="utf-8") as f:
+        f.write(output.model_dump_json(indent=2))
