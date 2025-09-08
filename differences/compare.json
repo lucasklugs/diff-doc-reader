@@ -1,0 +1,56 @@
+{
+  "doc_original": "data/docsoftware.docx",
+  "doc_updated": "data/docsoftware_att.docx",
+  "qtd_diff": 4,
+  "diffs": [
+    {
+      "id": 1,
+      "type_diff": "updated",
+      "content_diff": {
+        "from_": "objetivos:",
+        "to": "objetivo:"
+      },
+      "analysis": {
+        "diff": "{'status': 'updated', 'difference': {'from': 'objetivos:', 'to': 'objetivo:'}}",
+        "explanation": "A palavra 'objetivos' foi alterada para 'objetivo' no título da seção 'Justificativa e objetivos', mudando de plural para singular.",
+        "impact": "Contextual. A alteração de plural para singular no título da seção pode indicar uma redefinição do foco, sugerindo que a seção agora aborda um único objetivo principal em vez de múltiplos, afetando a clareza do texto sobre a quantidade de objetivos apresentados."
+      }
+    },
+    {
+      "id": 2,
+      "type_diff": "updated",
+      "content_diff": {
+        "from_": "Usabilidade:",
+        "to": "Usabilidades:"
+      },
+      "analysis": {
+        "diff": "A palavra 'Usabilidade:' foi alterada para 'Usabilidades:'",
+        "explanation": "A palavra 'Usabilidade:' foi alterada para 'Usabilidades:', mudando de singular para plural no título da seção.",
+        "impact": "Não há impacto relevante no conteúdo ou clareza do texto."
+      }
+    },
+    {
+      "id": 3,
+      "type_diff": "updated",
+      "content_diff": {
+        "from_": "JSON,",
+        "to": "Javascript,"
+      },
+      "analysis": {
+        "diff": "{'status': 'updated', 'difference': {'from': 'JSON,', 'to': 'Javascript,'}}",
+        "explanation": "A linguagem de implementação da API foi corrigida de JSON para Javascript.",
+        "impact": "Metodológico. Aprimora a precisão técnica da descrição da API."
+      }
+    },
+    {
+      "id": 4,
+      "type_diff": "deleted",
+      "content_diff": "Visões ¶ Na seção 7.1 a visão e o design das telas são detalhados, a linguagem de uso ¶ para a construção de tais telas foi XML. Para melhor entendimento do usuário, foram aplicados conceitos de UX (User Experience), além disso um dashboard web construido em bootstrap será disponibilizado para os administradores do aplicativo acompanharem os dados recebidos. ¶",
+      "analysis": {
+        "diff": "{'status': 'deleted', 'difference': 'Visões ¶ Na seção 7.1 a visão e o design das telas são detalhados, a linguagem de uso ¶ para a construção de tais telas foi XML. Para melhor entendimento do usuário, foram aplicados conceitos de UX (User Experience), além disso um dashboard web construido em bootstrap será disponibilizado para os administradores do aplicativo acompanharem os dados recebidos. ¶'}",
+        "explanation": "A seção que detalhava as visões do aplicativo, incluindo o uso de XML para o design das telas, conceitos de UX e a disponibilidade de um dashboard web para administradores, foi removida.",
+        "impact": "Prático. A remoção afeta a clareza e a completude da documentação sobre o design da interface do usuário e as ferramentas de monitoramento para administradores."
+      }
+    }
+  ]
+}
