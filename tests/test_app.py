@@ -32,7 +32,7 @@ def test_valid_file_invalid_extension(tmp_path):
 # ----------------------------
 def test_get_file_content_success(mocker, tmp_path):
     file = tmp_path / "arquivo.pdf"
-    file.write_bytes(b"conteudo fake")  # precisa ser bytes para "rb"
+    file.write_bytes(b"conteudo fake")
 
     mock_response = mocker.Mock()
     mock_response.json.return_value = {

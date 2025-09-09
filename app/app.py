@@ -108,6 +108,10 @@ class AgentExecutionException(Exception):
     """Erro na execução do Agente."""
 
 
+class GetDocumentException(Exception):
+    """Erro ao receber os documentos."""
+
+
 def get_file_content(file_path: str):
     with open(file_path, "rb") as file:
         file_data = file.read()
@@ -139,7 +143,7 @@ def compare_docs_diff(state: AgentState) -> dict:
     """Compara as diferenças entre dois contratos."""
     logger.debug("Comparing contract differences...")
     if len(state.get("documents", [])) < 2:
-        raise DiffComparisonException("É necessário pelo menos dois documentos para comparar.")  # noqa
+        raise DiffComparisonException("Erro ao identificar os documentos para a comparação.")  # noqa
 
     url = f"{OMP_API_URL}/redlines/"
     headers = {
@@ -283,16 +287,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "base_file",
         type=valid_file,
+        nargs="?",
         help="Informe o arquivo base para a comparação",  # noqa
     )
 
     parser.add_argument(
         "compare_file",
         type=valid_file,
-        help="Informe o arquivo atualizado para a comparação",  # noqa
+        nargs="?",
+        help="Informe o arquivo para a comparação",  # noqa
     )
 
     args = parser.parse_args()
+    help_compare_file = parser._actions[2].help
+
+    if args.base_file is None:
+        print("É necessário pelo menos dois documentos.")
+        sys.exit(1)
+
+    if args.compare_file is None:
+        print(f"{help_compare_file}")
+        sys.exit(1)
 
     base_file = args.base_file
 
